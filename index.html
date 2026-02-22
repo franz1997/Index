@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gold Predictor AI - XAUUSD</title>
+    
+    <link rel="stylesheet" href="https://pyscript.net/releases/2024.1.1/core.css" />
+    <script type="module" src="https://pyscript.net/releases/2024.1.1/core.js"></script>
+
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #121212; color: #e0e0e0; display: flex; justify-content: center; padding: 20px; }
+        .container { background-color: #1e1e1e; padding: 30px; border-radius: 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); max-width: 600px; width: 100%; border: 1px solid #333; }
+        h1 { color: #ffd700; text-align: center; margin-bottom: 10px; }
+        .status { text-align: center; color: #888; font-style: italic; margin-bottom: 20px; }
+        .result-card { background: #252525; padding: 20px; border-radius: 10px; border-left: 5px solid #ffd700; margin-top: 20px; }
+        .price { font-size: 2.5em; font-weight: bold; color: #fff; display: block; margin: 10px 0; }
+        .details { font-size: 0.9em; color: #aaa; }
+        #output { margin-top: 20px; line-height: 1.6; }
+        .loader { border: 4px solid #333; border-top: 4px solid #ffd700; border-radius: 50%; width: 30px; height: 30px; animation: spin 1s linear infinite; margin: 0 auto; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>XAUUSD AI Predictor</h1>
+    <p style="text-align: center;">Minimi Quadrati + Rete Neurale MLP</p>
+    
+    <div id="loading-zone">
+        <div class="loader"></div>
+        <p class="status">Inizializzazione ambiente Python e download dati...</p>
+    </div>
+
+    <div id="result-display" style="display:none;">
+        <div class="result-card">
+            <span class="details">Previsione Chiusura Odierna:</span>
+            <span id="final-price" class="price">--</span>
+            <div id="sub-details" class="details"></div>
+        </div>
+        <div id="output"></div>
+    </div>
+</div>
+
+<py-config>
+    packages = ["pandas", "numpy", "scikit-learn", "yfinance"]
+</py-config>
+
+<py-script>
+import yfinance as yf
+import pandas as pd
+import numpy as np
+from sklearn.linear_model import LinearRegression
+from sklearn.neural_network import MLPRegressor
+from sklearn.preprocessing import StandardScaler
+from datetime import datetime
+import js
+
+async def main():
+    try:
+        # 1. Download dati (GC=F è il ticker dei futures dell'oro, proxy per XAUUSD)
+        data = yf.download("GC=F", period="1y", interval="1d")
+        df = data[['Close']].dropna()
+        
+        # Creazione Features (Lag di 1 e 2 giorni)
+        df['Lag1'] = df['Close'].shift(1)
+        df['Lag2'] = df['Close'].shift(2)
+        df = df.dropna()
+
+        X = df[['Lag1', 'Lag2']].values
+        y = df['Close'].values
+
+        # Ultimi dati per la previsione di oggi
+        current_x = np.array([[y[-1], y[-2]]])
+
+        # 2. Modello Minimi Quadrati (Linear Regression)
+        lr = LinearRegression()
+        lr.fit(X[:-1], y[:-1])
+        pred_lr = lr.predict(current_x)[0]
+
+        # 3. Rete Neurale (MLP)
+        scaler = StandardScaler()
+        X_scaled = scaler.fit_transform(X[:-1])
+        nn = MLPRegressor(hidden_layer_sizes=(10, 10), max_iter=1000, random_state=42)
+        nn.fit(X_scaled, y[:-1])
+        
+        current_x_scaled = scaler.transform(current_x)
+        pred_nn = nn.predict(current_x_scaled)[0]
+
+        # 4. Ensemble (Media)
+        final_price = (pred_lr + pred_nn) / 2
+
+        # Aggiornamento Interfaccia
+        js.document.getElementById("loading-zone").style.display = "none"
+        js.document.getElementById("result-display").style.display = "block"
+        js.document.getElementById("final-price").innerHTML = f"${final_price:.2f}"
+        
+        info = f"Basato su ultima chiusura: ${y[-1]:.2f}<br>"
+        info += f"Previsione Linear Reg: ${pred_lr:.2f}<br>"
+        info += f"Previsione Neural Net: ${pred_nn:.2f}"
+        js.document.getElementById("sub-details").innerHTML = info
+        
+    except Exception as e:
+        js.document.getElementById("loading-zone").innerHTML = f"Errore: {str(e)}"
+
+# Avvia la funzione principale
+import asyncio
+asyncio.ensure_future(main())
+</py-script>
+
+</body>
+</html>
