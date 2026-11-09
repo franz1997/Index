@@ -1,0 +1,5 @@
+requests>=2.31
+python-dotenv>=1.0
+# Solo per la modalità LIVE (firma delle transazioni Solana):
+solders>=0.21
+base58>=2.1
