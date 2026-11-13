@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Preventivo Tinteggiatura</title>
+<style>
+  :root {
+    --primario: #1f5f8b;
+    --chiaro: #eaf2f8;
+    --bordo: #cfd8dc;
+    --testo: #263238;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: "Segoe UI", Tahoma, Arial, sans-serif;
+    background: #f4f6f8;
+    color: var(--testo);
+    margin: 0;
+    padding: 20px;
+  }
+  .foglio {
+    max-width: 960px;
+    margin: 0 auto;
+    background: #fff;
+    padding: 30px;
+    border-radius: 10px;
+    box-shadow: 0 4px 20px rgba(0,0,0,.08);
+  }
+  h1 { color: var(--primario); margin: 0 0 4px; }
+  .sottotitolo { color: #607d8b; margin: 0 0 24px; }
+  h2 {
+    font-size: 1.1em;
+    color: var(--primario);
+    border-bottom: 2px solid var(--chiaro);
+    padding-bottom: 6px;
+    margin-top: 28px;
+  }
+  .griglia {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 14px;
+  }
+  label { display: block; font-size: .85em; font-weight: 600; margin-bottom: 4px; }
+  input, select, textarea {
+    width: 100%;
+    padding: 8px 10px;
+    border: 1px solid var(--bordo);
+    border-radius: 6px;
+    font: inherit;
+  }
+  input:focus, select:focus, textarea:focus { outline: 2px solid var(--primario); border-color: transparent; }
+  textarea { resize: vertical; min-height: 60px; }
+
+  table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+  th {
+    background: var(--primario);
+    color: #fff;
+    text-align: left;
+    padding: 8px;
+    font-size: .85em;
+  }
+  td { padding: 6px; border-bottom: 1px solid var(--chiaro); vertical-align: middle; }
+  td input, td select { padding: 6px; }
+  .col-desc { width: 38%; }
+  .col-um { width: 11%; }
+  .col-qta, .col-prezzo { width: 13%; }
+  .col-tot { width: 15%; text-align: right; font-weight: 600; white-space: nowrap; }
+  .col-azioni { width: 40px; text-align: center; }
+
+  button {
+    background: var(--primario);
+    color: #fff;
+    border: none;
+    padding: 9px 16px;
+    border-radius: 6px;
+    cursor: pointer;
+    font: inherit;
+  }
+  button:hover { filter: brightness(1.1); }
+  button.secondario { background: #78909c; }
+  button.elimina { background: #e53935; padding: 4px 10px; }
+  .barra { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; align-items: center; }
+  .barra select { width: auto; }
+
+  .riepilogo {
+    margin-left: auto;
+    margin-top: 20px;
+    max-width: 380px;
+    background: var(--chiaro);
+    border-radius: 8px;
+    padding: 16px;
+  }
+  .riga-tot { display: flex; justify-content: space-between; padding: 5px 0; gap: 10px; align-items: center; }
+  .riga-tot input, .riga-tot select { width: 90px; text-align: right; }
+  .totale {
+    border-top: 2px solid var(--primario);
+    margin-top: 8px;
+    padding-top: 10px;
+    font-size: 1.3em;
+    font-weight: 700;
+    color: var(--primario);
+  }
+  .azioni-finali { display: flex; gap: 10px; justify-content: flex-end; margin-top: 24px; flex-wrap: wrap; }
+
+  /* Calcolatore superficie */
+  .calcolatore {
+    background: #fafafa;
+    border: 1px dashed var(--bordo);
+    border-radius: 8px;
+    padding: 14px;
+    margin-top: 10px;
+  }
+  .calcolatore .griglia { grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); }
+  .esito-calc { margin-top: 10px; font-weight: 600; }
+
+  @media (max-width: 700px) {
+    .foglio { padding: 16px; }
+    table, thead, tbody, tr, td { display: block; width: 100% !important; }
+    thead { display: none; }
+    tr { border: 1px solid var(--bordo); border-radius: 8px; margin-bottom: 10px; padding: 6px; }
+    td { border: none; }
+    td::before { content: attr(data-label); display: block; font-size: .75em; font-weight: 600; color: #607d8b; }
+    .col-tot { text-align: left; }
+  }
+
+  /* Stampa */
+  @media print {
+    body { background: #fff; padding: 0; }
+    .foglio { box-shadow: none; padding: 0; }
+    .no-stampa, .col-azioni, .calcolatore { display: none !important; }
+    input, select, textarea { border: none; padding: 2px 0; background: transparent; -webkit-appearance: none; appearance: none; }
+    th { background: #ddd !important; color: #000; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .riepilogo { background: none; border: 1px solid #999; }
+  }
+</style>
+</head>
+<body>
+
+<div class="foglio">
+  <h1>Preventivo Tinteggiatura</h1>
+  <p class="sottotitolo">Compila i campi: il totale si aggiorna automaticamente.</p>
+
+  <h2>Dati preventivo</h2>
+  <div class="griglia">
+    <div>
+      <label for="numero">Numero preventivo</label>
+      <input id="numero" type="text" placeholder="es. 2026/001">
+    </div>
+    <div>
+      <label for="data">Data</label>
+      <input id="data" type="date">
+    </div>
+    <div>
+      <label for="validita">Validità offerta (giorni)</label>
+      <input id="validita" type="number" min="0" value="30">
+    </div>
+  </div>
+
+  <h2>Intestato a</h2>
+  <div class="griglia">
+    <div>
+      <label for="cliente">Nome e cognome / Ragione sociale</label>
+      <input id="cliente" type="text" placeholder="Mario Rossi">
+    </div>
+    <div>
+      <label for="cf">Codice fiscale / P. IVA</label>
+      <input id="cf" type="text">
+    </div>
+    <div>
+      <label for="telefono">Telefono</label>
+      <input id="telefono" type="tel">
+    </div>
+    <div>
+      <label for="email">Email</label>
+      <input id="email" type="email">
+    </div>
+  </div>
+
+  <h2>Indirizzo lavori</h2>
+  <div class="griglia">
+    <div>
+      <label for="via">Via e numero civico</label>
+      <input id="via" type="text" placeholder="Via Roma 10">
+    </div>
+    <div>
+      <label for="cap">CAP</label>
+      <input id="cap" type="text" maxlength="5">
+    </div>
+    <div>
+      <label for="citta">Città</label>
+      <input id="citta" type="text">
+    </div>
+    <div>
+      <label for="provincia">Provincia</label>
+      <input id="provincia" type="text" maxlength="2" placeholder="MI">
+    </div>
+  </div>
+
+  <h2>Lavori da eseguire</h2>
+
+  <details class="calcolatore no-stampa">
+    <summary><strong>Calcolatore superficie stanza (facoltativo)</strong></summary>
+    <div class="griglia" style="margin-top:10px">
+      <div><label for="c-lung">Lunghezza (m)</label><input id="c-lung" type="number" step="0.01" min="0"></div>
+      <div><label for="c-larg">Larghezza (m)</label><input id="c-larg" type="number" step="0.01" min="0"></div>
+      <div><label for="c-alt">Altezza (m)</label><input id="c-alt" type="number" step="0.01" min="0" value="2.70"></div>
+      <div><label for="c-aperture">Porte/finestre da togliere (mq)</label><input id="c-aperture" type="number" step="0.01" min="0" value="0"></div>
+    </div>
+    <div class="esito-calc" id="esito-calc">Pareti: 0,00 mq — Soffitto: 0,00 mq</div>
+    <div class="barra">
+      <button type="button" id="aggiungi-pareti">Aggiungi pareti al preventivo</button>
+      <button type="button" id="aggiungi-soffitto" class="secondario">Aggiungi soffitto al preventivo</button>
+    </div>
+  </details>
+
+  <table>
+    <thead>
+      <tr>
+        <th class="col-desc">Descrizione</th>
+        <th class="col-um">U.M.</th>
+        <th class="col-qta">Quantità</th>
+        <th class="col-prezzo">Prezzo unit. (€)</th>
+        <th class="col-tot">Importo</th>
+        <th class="col-azioni no-stampa"></th>
+      </tr>
+    </thead>
+    <tbody id="righe"></tbody>
+  </table>
+
+  <div class="barra no-stampa">
+    <button type="button" id="aggiungi-riga">+ Aggiungi voce</button>
+    <select id="voci-rapide" aria-label="Voci rapide">
+      <option value="">— Aggiungi voce predefinita —</option>
+    </select>
+  </div>
+
+  <div class="riepilogo">
+    <div class="riga-tot"><span>Imponibile lavori</span><span id="imponibile">€ 0,00</span></div>
+    <div class="riga-tot">
+      <span>Sconto (%)</span>
+      <input id="sconto" type="number" min="0" max="100" step="0.5" value="0">
+    </div>
+    <div class="riga-tot"><span>Importo sconto</span><span id="importo-sconto">− € 0,00</span></div>
+    <div class="riga-tot"><span>Imponibile scontato</span><span id="scontato">€ 0,00</span></div>
+    <div class="riga-tot">
+      <span>IVA</span>
+      <select id="iva">
+        <option value="22">22%</option>
+        <option value="10">10%</option>
+        <option value="4">4%</option>
+        <option value="0">0% / esente</option>
+      </select>
+    </div>
+    <div class="riga-tot"><span>Importo IVA</span><span id="importo-iva">€ 0,00</span></div>
+    <div class="riga-tot totale"><span>TOTALE</span><span id="totale">€ 0,00</span></div>
+  </div>
+
+  <h2>Note e condizioni</h2>
+  <textarea id="note" rows="4">Materiali inclusi. Pagamento: 30% alla conferma, saldo a fine lavori.
+Sono esclusi lavori non espressamente indicati.</textarea>
+
+  <div class="azioni-finali no-stampa">
+    <button type="button" class="secondario" id="nuovo">Nuovo preventivo</button>
+    <button type="button" id="stampa">Stampa / Salva PDF</button>
+  </div>
+</div>
+
+<template id="tpl-riga">
+  <tr>
+    <td class="col-desc" data-label="Descrizione"><input class="desc" type="text" placeholder="Descrizione lavoro"></td>
+    <td class="col-um" data-label="U.M.">
+      <select class="um">
+        <option>mq</option>
+        <option>ml</option>
+        <option>ore</option>
+        <option>pz</option>
+        <option>a corpo</option>
+      </select>
+    </td>
+    <td class="col-qta" data-label="Quantità"><input class="qta" type="number" min="0" step="0.01" value="1"></td>
+    <td class="col-prezzo" data-label="Prezzo unit. (€)"><input class="prezzo" type="number" min="0" step="0.01" value="0"></td>
+    <td class="col-tot" data-label="Importo"><span class="importo">€ 0,00</span></td>
+    <td class="col-azioni no-stampa"><button type="button" class="elimina" title="Elimina voce">✕</button></td>
+  </tr>
+</template>
+
+<script>
+  // Voci predefinite (prezzi indicativi, modificabili)
+  const VOCI_PREDEFINITE = [
+    { desc: "Tinteggiatura pareti interne (2 mani, idropittura)", um: "mq", prezzo: 7 },
+    { desc: "Tinteggiatura soffitti (2 mani)", um: "mq", prezzo: 8 },
+    { desc: "Pittura lavabile / antimuffa", um: "mq", prezzo: 10 },
+    { desc: "Tinteggiatura facciata esterna (quarzo/silossanica)", um: "mq", prezzo: 18 },
+    { desc: "Stuccatura e rasatura pareti", um: "mq", prezzo: 6 },
+    { desc: "Fissativo / primer", um: "mq", prezzo: 2 },
+    { desc: "Raschiatura vecchia pittura", um: "mq", prezzo: 4 },
+    { desc: "Verniciatura porte", um: "pz", prezzo: 90 },
+    { desc: "Verniciatura ringhiere / cancelli", um: "ml", prezzo: 25 },
+    { desc: "Protezione pavimenti e mobili", um: "a corpo", prezzo: 80 },
+    { desc: "Manodopera aggiuntiva", um: "ore", prezzo: 30 },
+    { desc: "Pulizia finale cantiere", um: "a corpo", prezzo: 60 }
+  ];
+
+  const CHIAVE = "preventivo-tinteggiatura";
+  const CAMPI = ["numero","data","validita","cliente","cf","telefono","email","via","cap","citta","provincia","sconto","iva","note"];
+  const $ = id => document.getElementById(id);
+  const tbody = $("righe");
+  const euro = n => "€ " + n.toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const num = v => { const n = parseFloat(String(v).replace(",", ".")); return isFinite(n) ? n : 0; };
+  const arrot = n => Math.round(n * 100) / 100;
+
+  function aggiungiRiga(dati = {}) {
+    const tr = $("tpl-riga").content.firstElementChild.cloneNode(true);
+    tr.querySelector(".desc").value = dati.desc || "";
+    tr.querySelector(".um").value = dati.um || "mq";
+    tr.querySelector(".qta").value = dati.qta ?? 1;
+    tr.querySelector(".prezzo").value = dati.prezzo ?? 0;
+    tr.querySelector(".elimina").addEventListener("click", () => { tr.remove(); calcola(); });
+    tbody.appendChild(tr);
+    calcola();
+    return tr;
+  }
+
+  function calcola() {
+    let imponibile = 0;
+    tbody.querySelectorAll("tr").forEach(tr => {
+      const importo = arrot(num(tr.querySelector(".qta").value) * num(tr.querySelector(".prezzo").value));
+      tr.querySelector(".importo").textContent = euro(importo);
+      imponibile += importo;
+    });
+    imponibile = arrot(imponibile);
+    const scontoPerc = Math.min(Math.max(num($("sconto").value), 0), 100);
+    const importoSconto = arrot(imponibile * scontoPerc / 100);
+    const scontato = arrot(imponibile - importoSconto);
+    const importoIva = arrot(scontato * num($("iva").value) / 100);
+    const totale = arrot(scontato + importoIva);
+
+    $("imponibile").textContent = euro(imponibile);
+    $("importo-sconto").textContent = "− " + euro(importoSconto);
+    $("scontato").textContent = euro(scontato);
+    $("importo-iva").textContent = euro(importoIva);
+    $("totale").textContent = euro(totale);
+    salva();
+  }
+
+  // Calcolatore superficie
+  function superfici() {
+    const l = num($("c-lung").value), w = num($("c-larg").value), h = num($("c-alt").value);
+    const aperture = num($("c-aperture").value);
+    const pareti = Math.max(arrot(2 * (l + w) * h - aperture), 0);
+    const soffitto = arrot(l * w);
+    return { pareti, soffitto };
+  }
+  function aggiornaCalc() {
+    const s = superfici();
+    $("esito-calc").textContent =
+      `Pareti: ${s.pareti.toLocaleString("it-IT",{minimumFractionDigits:2})} mq — Soffitto: ${s.soffitto.toLocaleString("it-IT",{minimumFractionDigits:2})} mq`;
+  }
+  ["c-lung","c-larg","c-alt","c-aperture"].forEach(id => $(id).addEventListener("input", aggiornaCalc));
+  $("aggiungi-pareti").addEventListener("click", () =>
+    aggiungiRiga({ ...VOCI_PREDEFINITE[0], qta: superfici().pareti }));
+  $("aggiungi-soffitto").addEventListener("click", () =>
+    aggiungiRiga({ ...VOCI_PREDEFINITE[1], qta: superfici().soffitto }));
+
+  // Salvataggio automatico nel browser
+  function salva() {
+    const dati = { righe: [] };
+    CAMPI.forEach(c => dati[c] = $(c).value);
+    tbody.querySelectorAll("tr").forEach(tr => dati.righe.push({
+      desc: tr.querySelector(".desc").value,
+      um: tr.querySelector(".um").value,
+      qta: tr.querySelector(".qta").value,
+      prezzo: tr.querySelector(".prezzo").value
+    }));
+    try { localStorage.setItem(CHIAVE, JSON.stringify(dati)); } catch (e) {}
+  }
+  function carica() {
+    let dati = null;
+    try { dati = JSON.parse(localStorage.getItem(CHIAVE)); } catch (e) {}
+    if (!dati) return false;
+    CAMPI.forEach(c => { if (dati[c] !== undefined) $(c).value = dati[c]; });
+    (dati.righe || []).forEach(r => aggiungiRiga(r));
+    return true;
+  }
+
+  // Eventi
+  VOCI_PREDEFINITE.forEach((v, i) => {
+    const o = document.createElement("option");
+    o.value = i;
+    o.textContent = `${v.desc} (${euro(v.prezzo)}/${v.um})`;
+    $("voci-rapide").appendChild(o);
+  });
+  $("voci-rapide").addEventListener("change", e => {
+    if (e.target.value === "") return;
+    aggiungiRiga({ ...VOCI_PREDEFINITE[e.target.value] });
+    e.target.value = "";
+  });
+  $("aggiungi-riga").addEventListener("click", () => aggiungiRiga().querySelector(".desc").focus());
+  tbody.addEventListener("input", calcola);
+  tbody.addEventListener("change", calcola);
+  CAMPI.forEach(c => $(c).addEventListener("input", calcola));
+  $("iva").addEventListener("change", calcola);
+  $("stampa").addEventListener("click", () => window.print());
+  $("nuovo").addEventListener("click", () => {
+    if (!confirm("Cancellare tutti i dati e iniziare un nuovo preventivo?")) return;
+    localStorage.removeItem(CHIAVE);
+    location.reload();
+  });
+
+  // Avvio
+  if (!carica()) {
+    $("data").value = new Date().toISOString().slice(0, 10);
+    aggiungiRiga({ ...VOCI_PREDEFINITE[0], qta: 0 });
+  }
+  aggiornaCalc();
+  calcola();
+</script>
+</body>
+</html>
