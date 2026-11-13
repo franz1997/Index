@@ -264,6 +264,7 @@ Sono esclusi lavori non espressamente indicati.</textarea>
     <button type="button" class="secondario" id="nuovo">Nuovo preventivo</button>
     <button type="button" id="stampa">Stampa / Salva PDF</button>
   </div>
+  <p id="avviso" class="no-stampa" style="text-align:right;color:#607d8b;font-size:.85em"></p>
 </div>
 
 <template id="tpl-riga">
@@ -401,11 +402,27 @@ Sono esclusi lavori non espressamente indicati.</textarea>
   tbody.addEventListener("change", calcola);
   CAMPI.forEach(c => $(c).addEventListener("input", calcola));
   $("iva").addEventListener("change", calcola);
-  $("stampa").addEventListener("click", () => window.print());
+  $("stampa").addEventListener("click", () => {
+    try { window.print(); } catch (e) {}
+    $("avviso").textContent = "Se la finestra di stampa non si apre, scarica il file preventivo.html e aprilo nel browser per stamparlo o salvarlo in PDF.";
+  });
+  let confermaNuovo = null;
   $("nuovo").addEventListener("click", () => {
-    if (!confirm("Cancellare tutti i dati e iniziare un nuovo preventivo?")) return;
-    localStorage.removeItem(CHIAVE);
-    location.reload();
+    if (!confermaNuovo) {
+      $("nuovo").textContent = "Confermi? Clicca di nuovo";
+      confermaNuovo = setTimeout(() => { $("nuovo").textContent = "Nuovo preventivo"; confermaNuovo = null; }, 4000);
+      return;
+    }
+    clearTimeout(confermaNuovo); confermaNuovo = null;
+    try { localStorage.removeItem(CHIAVE); } catch (e) {}
+    CAMPI.forEach(c => { const el = $(c); el.value = el.defaultValue ?? ""; });
+    $("iva").value = "22";
+    $("note").value = $("note").defaultValue;
+    tbody.innerHTML = "";
+    $("data").value = new Date().toISOString().slice(0, 10);
+    aggiungiRiga({ ...VOCI_PREDEFINITE[0], qta: 0 });
+    $("nuovo").textContent = "Nuovo preventivo";
+    $("avviso").textContent = "";
   });
 
   // Avvio
