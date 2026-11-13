@@ -262,7 +262,8 @@ Sono esclusi lavori non espressamente indicati.</textarea>
 
   <div class="azioni-finali no-stampa">
     <button type="button" class="secondario" id="nuovo">Nuovo preventivo</button>
-    <button type="button" id="stampa">Stampa / Salva PDF</button>
+    <button type="button" id="stampa" class="secondario">Stampa</button>
+    <button type="button" id="pdf">Scarica PDF</button>
   </div>
   <p id="avviso" class="no-stampa" style="text-align:right;color:#607d8b;font-size:.85em"></p>
 </div>
@@ -286,6 +287,8 @@ Sono esclusi lavori non espressamente indicati.</textarea>
   </tr>
 </template>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
 <script>
   // Voci predefinite (prezzi indicativi, modificabili)
   const VOCI_PREDEFINITE = [
@@ -402,10 +405,119 @@ Sono esclusi lavori non espressamente indicati.</textarea>
   tbody.addEventListener("change", calcola);
   CAMPI.forEach(c => $(c).addEventListener("input", calcola));
   $("iva").addEventListener("change", calcola);
-  $("stampa").addEventListener("click", () => {
-    try { window.print(); } catch (e) {}
-    $("avviso").textContent = "Se la finestra di stampa non si apre, scarica il file preventivo.html e aprilo nel browser per stamparlo o salvarlo in PDF.";
+  // La stampa funziona solo aprendo il file direttamente nel browser
+  let incorporata = true;
+  try { incorporata = window.top !== window.self; } catch (e) {}
+  if (incorporata) $("stampa").style.display = "none";
+  $("stampa").addEventListener("click", () => window.print());
+
+  // Generazione PDF
+  function creaPDF() {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ unit: "mm", format: "a4" });
+    const W = doc.internal.pageSize.getWidth();
+    const M = 15;
+    const v = id => $(id).value.trim();
+    const dataIt = v("data") ? v("data").split("-").reverse().join("/") : "";
+    let y = 20;
+
+    doc.setFont("helvetica", "bold"); doc.setFontSize(20); doc.setTextColor(31, 95, 139);
+    doc.text("PREVENTIVO TINTEGGIATURA", M, y);
+    doc.setFont("helvetica", "normal"); doc.setFontSize(10); doc.setTextColor(60);
+    const info = [];
+    if (v("numero")) info.push("N. " + v("numero"));
+    if (dataIt) info.push("Data: " + dataIt);
+    if (v("validita")) info.push("Validità: " + v("validita") + " giorni");
+    doc.text(info.join("   ·   "), M, y + 7);
+    y += 18;
+
+    const box = (titolo, righe, x, w) => {
+      doc.setFont("helvetica", "bold"); doc.setFontSize(10); doc.setTextColor(31, 95, 139);
+      doc.text(titolo, x, y);
+      doc.setFont("helvetica", "normal"); doc.setTextColor(30);
+      let yy = y + 6;
+      righe.filter(Boolean).forEach(r => {
+        doc.splitTextToSize(r, w).forEach(l => { doc.text(l, x, yy); yy += 5; });
+      });
+      return yy;
+    };
+    const metà = (W - 2 * M - 10) / 2;
+    const y1 = box("INTESTATO A", [v("cliente"),
+      v("cf") && "C.F./P.IVA: " + v("cf"), v("telefono") && "Tel: " + v("telefono"),
+      v("email") && "Email: " + v("email")], M, metà);
+    const luogo = [v("cap"), v("citta"), v("provincia") && "(" + v("provincia") + ")"].filter(Boolean).join(" ");
+    const y2 = box("INDIRIZZO LAVORI", [v("via"), luogo], M + metà + 10, metà);
+    y = Math.max(y1, y2) + 6;
+
+    const righe = [...tbody.querySelectorAll("tr")]
+      .filter(tr => num(tr.querySelector(".qta").value) * num(tr.querySelector(".prezzo").value) !== 0 || tr.querySelector(".desc").value.trim() && num(tr.querySelector(".qta").value) !== 0)
+      .map(tr => {
+      const q = num(tr.querySelector(".qta").value), pr = num(tr.querySelector(".prezzo").value);
+      return [tr.querySelector(".desc").value, tr.querySelector(".um").value,
+        q.toLocaleString("it-IT", { maximumFractionDigits: 2 }), euro(pr), euro(arrot(q * pr))];
+    });
+    doc.autoTable({
+      startY: y, margin: { left: M, right: M },
+      head: [["Descrizione", "U.M.", "Quantità", "Prezzo unit.", "Importo"]],
+      body: righe,
+      headStyles: { fillColor: [31, 95, 139] },
+      styles: { fontSize: 9.5, cellPadding: 2.5 },
+      columnStyles: { 1: { halign: "center", cellWidth: 20 }, 2: { halign: "right", cellWidth: 22 },
+        3: { halign: "right", cellWidth: 28 }, 4: { halign: "right", cellWidth: 30 } }
+    });
+    y = doc.lastAutoTable.finalY + 8;
+
+    const tot = [["Imponibile lavori", $("imponibile").textContent]];
+    if (num($("sconto").value) > 0) {
+      tot.push(["Sconto " + num($("sconto").value).toLocaleString("it-IT") + "%", $("importo-sconto").textContent.replace("−", "-")]);
+      tot.push(["Imponibile scontato", $("scontato").textContent]);
+    }
+    tot.push(["IVA " + $("iva").selectedOptions[0].textContent, $("importo-iva").textContent]);
+    tot.push(["TOTALE", $("totale").textContent]);
+    if (y > 250) { doc.addPage(); y = 20; }
+    doc.autoTable({
+      startY: y, margin: { left: W - M - 85, right: M }, body: tot, theme: "plain",
+      styles: { fontSize: 10, cellPadding: 1.8 },
+      columnStyles: { 1: { halign: "right" } },
+      didParseCell: d => { if (d.row.index === tot.length - 1) {
+        d.cell.styles.fontStyle = "bold"; d.cell.styles.fontSize = 13; d.cell.styles.textColor = [31, 95, 139]; } }
+    });
+    y = doc.lastAutoTable.finalY + 10;
+
+    if (v("note")) {
+      if (y > 260) { doc.addPage(); y = 20; }
+      doc.setFont("helvetica", "bold"); doc.setFontSize(10); doc.setTextColor(31, 95, 139);
+      doc.text("NOTE E CONDIZIONI", M, y);
+      doc.setFont("helvetica", "normal"); doc.setFontSize(9.5); doc.setTextColor(30);
+      doc.text(doc.splitTextToSize(v("note"), W - 2 * M), M, y + 6);
+    }
+    const h = doc.internal.pageSize.getHeight();
+    doc.setFontSize(10); doc.setTextColor(60);
+    doc.text("Firma per accettazione: ______________________________", M, h - 20);
+    return doc;
+  }
+
+  const nomeFile = () => "Preventivo" +
+    (v => v ? "_" + v.replace(/[^\w\-]+/g, "_") : "")($("cliente").value.trim()) + ".pdf";
+
+  $("pdf").addEventListener("click", async () => {
+    const avviso = $("avviso");
+    if (!window.jspdf) { avviso.textContent = "Impossibile creare il PDF: libreria non caricata (serve internet)."; return; }
+    const blob = creaPDF().output("blob");
+    let dl = null;
+    try { if (window.claude && claude.use) dl = await claude.use("downloads"); } catch (e) {}
+    if (dl) {
+      try { await dl.save({ filename: nomeFile(), data: blob }); avviso.textContent = "PDF salvato."; }
+      catch (e) { avviso.textContent = e && e.code === "declined" ? "Download annullato." : "Download non riuscito."; }
+      return;
+    }
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob); a.download = nomeFile();
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+    avviso.textContent = "PDF scaricato.";
   });
+
   let confermaNuovo = null;
   $("nuovo").addEventListener("click", () => {
     if (!confermaNuovo) {
