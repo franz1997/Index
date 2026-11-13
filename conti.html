@@ -58,6 +58,11 @@
   .next { text-align: center; color: var(--muted); margin-bottom: 20px; }
   .next b { color: var(--accent); }
   details summary { cursor: pointer; color: var(--muted); }
+  textarea { width: 100%; min-height: 120px; padding: 10px; border-radius: 8px; border: 1px solid var(--border); background: #161616; color: var(--text); font-family: monospace; font-size: .8em; }
+  .sync { text-align: center; font-size: .8em; color: var(--muted); margin: -12px 0 18px; }
+  .modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: none; align-items: center; justify-content: center; padding: 20px; z-index: 10; }
+  .modal-bg.open { display: flex; }
+  .modal { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 20px; max-width: 420px; width: 100%; }
 </style>
 </head>
 <body>
@@ -65,6 +70,7 @@
   <h1>I miei conti</h1>
   <p class="sub">Ripartizione dello stipendio del 15 del mese</p>
   <p class="next" id="nextPay"></p>
+  <p class="sync" id="sync">💾 Dati salvati in questo browser</p>
 
   <!-- SALDI -->
   <div class="card">
@@ -131,12 +137,29 @@
     </table></div>
     <div class="btns">
       <button class="ghost" id="esporta">⬇️ Esporta backup</button>
-      <button class="ghost" id="importaBtn">⬆️ Importa backup</button>
-      <input type="file" id="importaFile" accept="application/json" style="display:none">
+      <button class="ghost" id="importaBtn">⬆️ Importa da file</button>
+      <input type="file" id="importaFile" accept="application/json,.json" style="display:none">
     </div>
-    <p class="hint">I dati sono salvati solo in questo browser (localStorage). Esporta un backup ogni tanto per non perderli.</p>
+    <div id="backupBox" style="display:none;margin-top:14px">
+      <label for="backupTxt">Backup (JSON) – puoi copiarlo, oppure incollarne uno e premere "Importa testo"</label>
+      <textarea id="backupTxt"></textarea>
+      <div class="btns">
+        <button class="ghost" id="copia">📋 Copia</button>
+        <button class="ghost" id="scarica">💾 Scarica file</button>
+        <button class="ghost" id="importaTxt">⬆️ Importa testo</button>
+      </div>
+    </div>
+    <p class="hint" id="hintStorage">Esporta un backup ogni tanto per non perdere i dati.</p>
   </div>
 </div>
+
+<div class="modal-bg" id="modal"><div class="modal">
+  <p id="modalMsg" style="margin-top:0"></p>
+  <div class="btns" style="justify-content:flex-end">
+    <button class="ghost" id="modalNo">Annulla</button>
+    <button class="primary" id="modalSi">Conferma</button>
+  </div>
+</div></div>
 
 <script>
 const CONTI = [
@@ -159,7 +182,61 @@ function load() {
 }
 let data = load();
 data.prefs = data.prefs || { modo: 'perc', perc: 50 };
-const save = () => localStorage.setItem(STORAGE, JSON.stringify(data));
+// --- Salvataggio: browser + (se disponibile) cloud Claude ---
+let cloudRef = null, scrivendo = false, daScrivere = false;
+function save() {
+  try { localStorage.setItem(STORAGE, JSON.stringify(data)); } catch (e) {}
+  if (cloudRef) { daScrivere = true; flush(); }
+}
+async function flush() {
+  if (scrivendo || !daScrivere) return;
+  scrivendo = true; daScrivere = false;
+  try { await cloudRef.set({ json: JSON.stringify(data), aggiornato: new Date().toISOString() }); setSync('☁️ Dati salvati nel tuo account'); }
+  catch (e) { setSync('⚠️ Salvataggio online non riuscito: i dati restano in questo browser'); }
+  scrivendo = false;
+  if (daScrivere) flush();
+}
+const setSync = t => { $('sync').textContent = t; };
+async function connettiCloud() {
+  if (!window.claude || typeof claude.use !== 'function') return;
+  try {
+    const [db, user] = await Promise.all([claude.use('db'), claude.use('user')]);
+    if (!db || !user) return;
+    const uid = await user.id();
+    if (!uid) return;
+    const ref = db.doc('data/users/' + uid + '/conti');
+    setSync('⏳ Caricamento dati…');
+    const snap = await Promise.race([ref.get(), new Promise((_, rej) => setTimeout(() => rej('timeout'), 10000))]);
+    cloudRef = ref;
+    if (snap.exists && snap.data().json) {
+      const d = JSON.parse(snap.data().json);
+      if (d && d.iniziali && Array.isArray(d.movimenti)) {
+        data = d; data.prefs = data.prefs || { modo: 'perc', perc: 50 };
+        try { localStorage.setItem(STORAGE, JSON.stringify(data)); } catch (e) {}
+        init();
+      }
+      setSync('☁️ Dati salvati nel tuo account');
+    } else if (data.movimenti.length || Object.values(data.iniziali).some(v => v)) {
+      save();
+    } else setSync('☁️ Dati salvati nel tuo account');
+    $('hintStorage').textContent = 'I dati sono salvati nel tuo account e li ritrovi da qualsiasi dispositivo. Puoi comunque esportare un backup.';
+  } catch (e) {
+    setSync('💾 Dati salvati in questo browser (salvataggio online non disponibile)');
+  }
+}
+
+// --- Finestra di conferma ---
+function chiedi(msg, soloOk) {
+  return new Promise(res => {
+    $('modalMsg').textContent = msg;
+    $('modalNo').style.display = soloOk ? 'none' : '';
+    $('modalSi').textContent = soloOk ? 'OK' : 'Conferma';
+    $('modal').classList.add('open');
+    const fine = v => { $('modal').classList.remove('open'); $('modalSi').onclick = $('modalNo').onclick = null; res(v); };
+    $('modalSi').onclick = () => fine(true);
+    $('modalNo').onclick = () => fine(false);
+  });
+}
 
 function saldi() {
   const s = { ...data.iniziali };
@@ -272,10 +349,10 @@ function renderAll() { renderSaldi(); renderPreview(); renderStorico(); }
 // --- Eventi ---
 ['stipendio', 'risparmi', 'investimenti', 'fisso', 'perc', 'modo', 'mese'].forEach(id => $(id).addEventListener('input', renderPreview));
 
-$('registra').addEventListener('click', () => {
+$('registra').addEventListener('click', async () => {
   const p = calcola();
   const mese = $('mese').value;
-  if (data.movimenti.some(m => m.mese === mese) && !confirm(`Hai già registrato uno stipendio per ${nomeMese(mese)}. Aggiungerne un altro?`)) return;
+  if (data.movimenti.some(m => m.mese === mese) && !(await chiedi(`Hai già registrato uno stipendio per ${nomeMese(mese)}. Aggiungerne un altro?`))) return;
   data.movimenti.push({ id: Date.now(), mese, stipendio: r2(p.stipendio), risparmi: r2(p.risparmi), investimenti: r2(p.investimenti), spese: p.spese, principale: p.principale });
   data.prefs = { modo: $('modo').value, perc: +$('perc').value, fisso: $('fisso').value, risparmi: $('risparmi').value, investimenti: $('investimenti').value, stipendio: $('stipendio').value };
   save();
@@ -285,11 +362,11 @@ $('registra').addEventListener('click', () => {
   renderAll();
 });
 
-$('storico').addEventListener('click', e => {
+$('storico').addEventListener('click', async e => {
   const id = e.target.dataset.del;
   if (!id) return;
   const m = data.movimenti.find(x => x.id == id);
-  if (!confirm(`Eliminare lo stipendio di ${nomeMese(m.mese)}? I saldi verranno ricalcolati.`)) return;
+  if (!(await chiedi(`Eliminare lo stipendio di ${nomeMese(m.mese)}? I saldi verranno ricalcolati.`))) return;
   data.movimenti = data.movimenti.filter(x => x.id != id);
   save(); renderAll();
 });
@@ -304,24 +381,38 @@ $('saveBalances').addEventListener('click', () => {
   save(); renderAll();
 });
 
+const testoBackup = () => JSON.stringify(data, null, 2);
 $('esporta').addEventListener('click', () => {
-  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  $('backupBox').style.display = '';
+  $('backupTxt').value = testoBackup();
+});
+$('copia').addEventListener('click', async () => {
+  try { await navigator.clipboard.writeText($('backupTxt').value); $('copia').textContent = '✅ Copiato'; }
+  catch { $('backupTxt').select(); $('copia').textContent = 'Seleziona e copia a mano'; }
+  setTimeout(() => $('copia').textContent = '📋 Copia', 2000);
+});
+$('scarica').addEventListener('click', () => {
+  const blob = new Blob([$('backupTxt').value || testoBackup()], { type: 'application/json' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
   a.download = `conti-backup-${new Date().toISOString().slice(0, 10)}.json`;
   a.click();
-  URL.revokeObjectURL(a.href);
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 });
+async function importa(testo) {
+  try {
+    const d = JSON.parse(testo);
+    if (!d.iniziali || !Array.isArray(d.movimenti)) throw new Error();
+    if (!(await chiedi('Sostituire i dati attuali con quelli del backup?'))) return;
+    data = d; data.prefs = data.prefs || { modo: 'perc', perc: 50 };
+    save(); init();
+  } catch { await chiedi('Backup non valido.', true); }
+}
+$('importaTxt').addEventListener('click', () => importa($('backupTxt').value));
 $('importaBtn').addEventListener('click', () => $('importaFile').click());
 $('importaFile').addEventListener('change', async e => {
   const f = e.target.files[0]; if (!f) return;
-  try {
-    const d = JSON.parse(await f.text());
-    if (!d.iniziali || !Array.isArray(d.movimenti)) throw new Error();
-    if (!confirm('Sostituire i dati attuali con quelli del backup?')) return;
-    data = d; data.prefs = data.prefs || { modo: 'perc', perc: 50 };
-    save(); init();
-  } catch { alert('File di backup non valido.'); }
+  await importa(await f.text());
   e.target.value = '';
 });
 
@@ -337,7 +428,9 @@ function init() {
   prossimoStipendio();
   renderAll();
 }
+if (window.claude) $('scarica').style.display = 'none';
 init();
+connettiCloud();
 </script>
 </body>
 </html>
