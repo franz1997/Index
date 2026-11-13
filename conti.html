@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>I miei conti – Ripartizione stipendio</title>
+<style>
+  :root {
+    --bg: #121212; --card: #1e1e1e; --card2: #252525; --border: #333;
+    --text: #e0e0e0; --muted: #999; --accent: #ffd700;
+    --principale: #4da3ff; --risparmi: #3ecf8e; --investimenti: #b38cff; --spese: #ff8a5c;
+    --danger: #ff5c5c;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: var(--bg); color: var(--text); padding: 20px; }
+  .wrap { max-width: 1000px; margin: 0 auto; }
+  h1 { color: var(--accent); text-align: center; margin: 0 0 4px; }
+  .sub { text-align: center; color: var(--muted); margin: 0 0 24px; }
+  h2 { font-size: 1.15em; margin: 0 0 14px; color: #fff; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 20px; margin-bottom: 20px; box-shadow: 0 10px 30px rgba(0,0,0,.35); }
+
+  .accounts { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; }
+  .acc { background: var(--card2); border-radius: 12px; padding: 16px; border-left: 5px solid var(--c); }
+  .acc .name { color: var(--muted); font-size: .9em; }
+  .acc .val { font-size: 1.7em; font-weight: 700; margin-top: 6px; font-variant-numeric: tabular-nums; }
+  .total { margin-top: 14px; text-align: right; color: var(--muted); }
+  .total b { color: #fff; font-size: 1.2em; }
+
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; }
+  label { display: block; font-size: .85em; color: var(--muted); margin-bottom: 5px; }
+  input, select { width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border); background: #161616; color: var(--text); font-size: 1em; }
+  input:focus, select:focus { outline: 2px solid var(--accent); border-color: transparent; }
+  input[type=range] { padding: 0; accent-color: var(--spese); }
+
+  .btns { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 16px; }
+  button { cursor: pointer; border: 0; border-radius: 8px; padding: 10px 16px; font-size: .95em; font-weight: 600; }
+  .primary { background: var(--accent); color: #111; }
+  .ghost { background: transparent; color: var(--text); border: 1px solid var(--border); }
+  .danger { background: transparent; color: var(--danger); border: 1px solid var(--danger); padding: 5px 10px; font-size: .8em; }
+  button:disabled { opacity: .4; cursor: not-allowed; }
+
+  .preview { margin-top: 18px; background: var(--card2); border-radius: 12px; padding: 16px; }
+  .bar { display: flex; height: 22px; border-radius: 6px; overflow: hidden; background: #111; margin: 10px 0 14px; }
+  .bar div { height: 100%; transition: width .2s; }
+  .rows { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 8px 16px; }
+  .row { display: flex; justify-content: space-between; gap: 8px; }
+  .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; background: var(--c); }
+  .num { font-variant-numeric: tabular-nums; font-weight: 600; }
+  .warn { color: var(--danger); margin-top: 10px; font-weight: 600; }
+  .hint { color: var(--muted); font-size: .85em; margin-top: 8px; }
+
+  table { width: 100%; border-collapse: collapse; font-size: .92em; }
+  th, td { padding: 9px 8px; text-align: right; border-bottom: 1px solid var(--border); white-space: nowrap; font-variant-numeric: tabular-nums; }
+  th:first-child, td:first-child { text-align: left; }
+  th { color: var(--muted); font-weight: 600; }
+  .scroll { overflow-x: auto; }
+  .empty { color: var(--muted); text-align: center; padding: 20px; }
+  .next { text-align: center; color: var(--muted); margin-bottom: 20px; }
+  .next b { color: var(--accent); }
+  details summary { cursor: pointer; color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>I miei conti</h1>
+  <p class="sub">Ripartizione dello stipendio del 15 del mese</p>
+  <p class="next" id="nextPay"></p>
+
+  <!-- SALDI -->
+  <div class="card">
+    <h2>Saldi attuali</h2>
+    <div class="accounts" id="accounts"></div>
+    <div class="total">Patrimonio totale: <b id="totale">–</b></div>
+    <details style="margin-top:14px">
+      <summary>✏️ Correggi i saldi attuali (es. allineamento con l'estratto conto)</summary>
+      <div class="grid" style="margin-top:14px" id="editBalances"></div>
+      <div class="btns"><button class="ghost" id="saveBalances">Salva saldi</button></div>
+    </details>
+  </div>
+
+  <!-- NUOVO MESE -->
+  <div class="card">
+    <h2>Stipendio del mese</h2>
+    <div class="grid">
+      <div><label for="mese">Mese</label><input type="month" id="mese"></div>
+      <div><label for="stipendio">Stipendio netto (€)</label><input type="number" id="stipendio" min="0" step="0.01" placeholder="es. 1800"></div>
+      <div><label for="risparmi">Da mettere in Risparmi (€)</label><input type="number" id="risparmi" min="0" step="0.01" placeholder="0"></div>
+      <div><label for="investimenti">Da mettere in Investimenti (€)</label><input type="number" id="investimenti" min="0" step="0.01" placeholder="0"></div>
+    </div>
+
+    <div class="grid" style="margin-top:14px">
+      <div>
+        <label for="modo">Come dividere il resto tra Spese e Principale</label>
+        <select id="modo">
+          <option value="perc">Percentuale al conto Spese</option>
+          <option value="fisso">Importo fisso al conto Spese</option>
+        </select>
+      </div>
+      <div id="percBox">
+        <label for="perc">Al conto Spese: <span id="percLbl">50</span>% · al Principale: <span id="percLbl2">50</span>%</label>
+        <input type="range" id="perc" min="0" max="100" step="5" value="50">
+      </div>
+      <div id="fissoBox" style="display:none">
+        <label for="fisso">Importo al conto Spese (€) – il resto va al Principale</label>
+        <input type="number" id="fisso" min="0" step="0.01" placeholder="es. 600">
+      </div>
+    </div>
+
+    <div class="preview">
+      <b>Anteprima ripartizione</b>
+      <div class="bar" id="bar"></div>
+      <div class="rows" id="previewRows"></div>
+      <div class="warn" id="warn"></div>
+    </div>
+
+    <div class="btns">
+      <button class="primary" id="registra">Registra stipendio</button>
+    </div>
+    <p class="hint">Le impostazioni di ripartizione vengono ricordate per il mese successivo.</p>
+  </div>
+
+  <!-- STORICO -->
+  <div class="card">
+    <h2>Storico mesi</h2>
+    <div class="scroll"><table>
+      <thead><tr>
+        <th>Mese</th><th>Stipendio</th><th>Risparmi</th><th>Investimenti</th><th>Spese</th><th>Principale</th><th></th>
+      </tr></thead>
+      <tbody id="storico"></tbody>
+      <tfoot id="storicoTot"></tfoot>
+    </table></div>
+    <div class="btns">
+      <button class="ghost" id="esporta">⬇️ Esporta backup</button>
+      <button class="ghost" id="importaBtn">⬆️ Importa backup</button>
+      <input type="file" id="importaFile" accept="application/json" style="display:none">
+    </div>
+    <p class="hint">I dati sono salvati solo in questo browser (localStorage). Esporta un backup ogni tanto per non perderli.</p>
+  </div>
+</div>
+
+<script>
+const CONTI = [
+  { key: 'principale',   nome: 'Conto principale',   colore: 'var(--principale)' },
+  { key: 'risparmi',     nome: 'Conto risparmi',     colore: 'var(--risparmi)' },
+  { key: 'investimenti', nome: 'Conto investimenti', colore: 'var(--investimenti)' },
+  { key: 'spese',        nome: 'Conto spese',        colore: 'var(--spese)' },
+];
+const STORAGE = 'conti-stipendio-v1';
+const fmt = n => n.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' });
+const r2 = n => Math.round(n * 100) / 100;
+const $ = id => document.getElementById(id);
+
+function load() {
+  try {
+    const d = JSON.parse(localStorage.getItem(STORAGE));
+    if (d && d.iniziali && Array.isArray(d.movimenti)) return d;
+  } catch (e) {}
+  return { iniziali: { principale: 0, risparmi: 0, investimenti: 0, spese: 0 }, movimenti: [], prefs: { modo: 'perc', perc: 50, fisso: '', risparmi: '', investimenti: '', stipendio: '' } };
+}
+let data = load();
+data.prefs = data.prefs || { modo: 'perc', perc: 50 };
+const save = () => localStorage.setItem(STORAGE, JSON.stringify(data));
+
+function saldi() {
+  const s = { ...data.iniziali };
+  for (const m of data.movimenti) for (const c of CONTI) s[c.key] = r2(s[c.key] + (m[c.key] || 0));
+  return s;
+}
+
+function nomeMese(ym) {
+  const [y, m] = ym.split('-').map(Number);
+  const s = new Date(y, m - 1, 1).toLocaleDateString('it-IT', { month: 'long', year: 'numeric' });
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+function renderSaldi() {
+  const s = saldi();
+  $('accounts').innerHTML = CONTI.map(c => `
+    <div class="acc" style="--c:${c.colore}">
+      <div class="name">${c.nome}</div>
+      <div class="val">${fmt(s[c.key])}</div>
+    </div>`).join('');
+  $('totale').textContent = fmt(CONTI.reduce((t, c) => t + s[c.key], 0));
+  $('editBalances').innerHTML = CONTI.map(c => `
+    <div><label for="ed-${c.key}">${c.nome} (€)</label>
+    <input type="number" step="0.01" id="ed-${c.key}" value="${s[c.key]}"></div>`).join('');
+}
+
+function calcola() {
+  const stip = parseFloat($('stipendio').value) || 0;
+  const ris = parseFloat($('risparmi').value) || 0;
+  const inv = parseFloat($('investimenti').value) || 0;
+  const resto = r2(stip - ris - inv);
+  let spese;
+  if ($('modo').value === 'perc') spese = r2(Math.max(resto, 0) * (+$('perc').value) / 100);
+  else spese = r2(Math.min(parseFloat($('fisso').value) || 0, Math.max(resto, 0)));
+  const principale = r2(resto - spese);
+  return { stipendio: stip, risparmi: ris, investimenti: inv, spese, principale, resto };
+}
+
+function renderPreview() {
+  const p = calcola();
+  $('percLbl').textContent = $('perc').value;
+  $('percLbl2').textContent = 100 - $('perc').value;
+  $('percBox').style.display = $('modo').value === 'perc' ? '' : 'none';
+  $('fissoBox').style.display = $('modo').value === 'fisso' ? '' : 'none';
+
+  const tot = p.stipendio || 1;
+  const ordine = ['risparmi', 'investimenti', 'spese', 'principale'];
+  $('bar').innerHTML = ordine.map(k => {
+    const c = CONTI.find(x => x.key === k);
+    const w = Math.max(p[k], 0) / tot * 100;
+    return `<div style="width:${p.stipendio ? w : 0}%;background:${c.colore}" title="${c.nome}: ${fmt(p[k])}"></div>`;
+  }).join('');
+  $('previewRows').innerHTML = ordine.map(k => {
+    const c = CONTI.find(x => x.key === k);
+    const pct = p.stipendio ? ` <span style="color:var(--muted)">(${(p[k] / p.stipendio * 100).toFixed(1)}%)</span>` : '';
+    return `<div class="row"><span><span class="dot" style="--c:${c.colore}"></span>${c.nome.replace('Conto ', '')}</span><span class="num">${fmt(p[k])}${pct}</span></div>`;
+  }).join('') + `<div class="row"><span>Resto da dividere</span><span class="num">${fmt(p.resto)}</span></div>`;
+
+  let w = '';
+  if (p.stipendio <= 0) w = '';
+  else if (p.resto < 0) w = `⚠️ Risparmi + Investimenti superano lo stipendio di ${fmt(-p.resto)}.`;
+  else if ($('modo').value === 'fisso' && (parseFloat($('fisso').value) || 0) > p.resto) w = `⚠️ L'importo per le Spese supera il resto: verrà limitato a ${fmt(p.resto)}.`;
+  $('warn').textContent = w;
+  $('registra').disabled = p.stipendio <= 0 || p.resto < 0 || !$('mese').value;
+}
+
+function renderStorico() {
+  const mov = [...data.movimenti].sort((a, b) => b.mese.localeCompare(a.mese) || b.id - a.id);
+  if (!mov.length) {
+    $('storico').innerHTML = `<tr><td colspan="7" class="empty">Nessun mese registrato ancora.</td></tr>`;
+    $('storicoTot').innerHTML = '';
+    return;
+  }
+  $('storico').innerHTML = mov.map(m => `
+    <tr>
+      <td>${nomeMese(m.mese)}</td>
+      <td>${fmt(m.stipendio)}</td>
+      <td style="color:var(--risparmi)">${fmt(m.risparmi)}</td>
+      <td style="color:var(--investimenti)">${fmt(m.investimenti)}</td>
+      <td style="color:var(--spese)">${fmt(m.spese)}</td>
+      <td style="color:var(--principale)">${fmt(m.principale)}</td>
+      <td><button class="danger" data-del="${m.id}">Elimina</button></td>
+    </tr>`).join('');
+  const sum = k => data.movimenti.reduce((t, m) => t + m[k], 0);
+  $('storicoTot').innerHTML = `<tr style="font-weight:700">
+    <td>Totale</td><td>${fmt(sum('stipendio'))}</td><td>${fmt(sum('risparmi'))}</td>
+    <td>${fmt(sum('investimenti'))}</td><td>${fmt(sum('spese'))}</td><td>${fmt(sum('principale'))}</td><td></td></tr>`;
+}
+
+function prossimoStipendio() {
+  const oggi = new Date(); oggi.setHours(0, 0, 0, 0);
+  let d = new Date(oggi.getFullYear(), oggi.getMonth(), 15);
+  if (d < oggi) d = new Date(oggi.getFullYear(), oggi.getMonth() + 1, 15);
+  const giorni = Math.round((d - oggi) / 86400000);
+  const quando = giorni === 0 ? '<b>oggi</b>' : `tra <b>${giorni} giorn${giorni === 1 ? 'o' : 'i'}</b>`;
+  $('nextPay').innerHTML = `Prossimo stipendio: ${d.toLocaleDateString('it-IT', { day: 'numeric', month: 'long', year: 'numeric' })} — ${quando}`;
+}
+
+function meseDefault() {
+  // propone il primo mese (da quello corrente in poi) non ancora registrato
+  const oggi = new Date();
+  let y = oggi.getFullYear(), m = oggi.getMonth() + 1;
+  const ym = () => `${y}-${String(m).padStart(2, '0')}`;
+  while (data.movimenti.some(x => x.mese === ym())) { m++; if (m > 12) { m = 1; y++; } }
+  return ym();
+}
+
+function renderAll() { renderSaldi(); renderPreview(); renderStorico(); }
+
+// --- Eventi ---
+['stipendio', 'risparmi', 'investimenti', 'fisso', 'perc', 'modo', 'mese'].forEach(id => $(id).addEventListener('input', renderPreview));
+
+$('registra').addEventListener('click', () => {
+  const p = calcola();
+  const mese = $('mese').value;
+  if (data.movimenti.some(m => m.mese === mese) && !confirm(`Hai già registrato uno stipendio per ${nomeMese(mese)}. Aggiungerne un altro?`)) return;
+  data.movimenti.push({ id: Date.now(), mese, stipendio: r2(p.stipendio), risparmi: r2(p.risparmi), investimenti: r2(p.investimenti), spese: p.spese, principale: p.principale });
+  data.prefs = { modo: $('modo').value, perc: +$('perc').value, fisso: $('fisso').value, risparmi: $('risparmi').value, investimenti: $('investimenti').value, stipendio: $('stipendio').value };
+  save();
+  // proponi il mese successivo
+  const [y, m] = mese.split('-').map(Number);
+  $('mese').value = m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, '0')}`;
+  renderAll();
+});
+
+$('storico').addEventListener('click', e => {
+  const id = e.target.dataset.del;
+  if (!id) return;
+  const m = data.movimenti.find(x => x.id == id);
+  if (!confirm(`Eliminare lo stipendio di ${nomeMese(m.mese)}? I saldi verranno ricalcolati.`)) return;
+  data.movimenti = data.movimenti.filter(x => x.id != id);
+  save(); renderAll();
+});
+
+$('saveBalances').addEventListener('click', () => {
+  // imposta i saldi iniziali in modo che il saldo attuale coincida con quanto inserito
+  const s = saldi();
+  for (const c of CONTI) {
+    const nuovo = parseFloat($('ed-' + c.key).value) || 0;
+    data.iniziali[c.key] = r2(data.iniziali[c.key] + (nuovo - s[c.key]));
+  }
+  save(); renderAll();
+});
+
+$('esporta').addEventListener('click', () => {
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `conti-backup-${new Date().toISOString().slice(0, 10)}.json`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+});
+$('importaBtn').addEventListener('click', () => $('importaFile').click());
+$('importaFile').addEventListener('change', async e => {
+  const f = e.target.files[0]; if (!f) return;
+  try {
+    const d = JSON.parse(await f.text());
+    if (!d.iniziali || !Array.isArray(d.movimenti)) throw new Error();
+    if (!confirm('Sostituire i dati attuali con quelli del backup?')) return;
+    data = d; data.prefs = data.prefs || { modo: 'perc', perc: 50 };
+    save(); init();
+  } catch { alert('File di backup non valido.'); }
+  e.target.value = '';
+});
+
+function init() {
+  const p = data.prefs;
+  $('modo').value = p.modo || 'perc';
+  $('perc').value = p.perc ?? 50;
+  $('fisso').value = p.fisso || '';
+  $('risparmi').value = p.risparmi || '';
+  $('investimenti').value = p.investimenti || '';
+  $('stipendio').value = p.stipendio || '';
+  $('mese').value = meseDefault();
+  prossimoStipendio();
+  renderAll();
+}
+init();
+</script>
+</body>
+</html>
